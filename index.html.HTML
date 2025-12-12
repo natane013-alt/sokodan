@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Sokoban Sci-Fi — HTML</title>
+<style>
+  :root{
+    --bg:#071226;
+    --panel:#071e2b;
+    --accent:#2ad1ff;
+    --muted:#9fb8c6;
+  }
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,#04101a 0%, #071226 60%);color:#e6f7ff;font-family:Inter,Segoe UI,Arial,sans-serif}
+  .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:28px;box-sizing:border-box}
+  .ui{
+    width:360px;
+    margin-left:28px;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:16px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,0.6);backdrop-filter:blur(2px)}
+  h1{margin:0 0 6px 0;font-size:20px;color:var(--accent)}
+  p.small{margin:0;color:var(--muted)}
+  button{appearance:none;border:none;padding:10px 12px;border-radius:8px;background:linear-gradient(180deg,#127a88,#0b6a76);color:white;cursor:pointer;font-weight:600}
+  .row{display:flex;gap:8px;align-items:center}
+  #gameWrap{display:flex;align-items:center}
+  canvas{background:#01121b;border-radius:10px;box-shadow: 0 12px 40px rgba(0,0,0,0.7); image-rendering: pixelated;}
+  .smallBtn{padding:8px 10px;background:#0b2e3a;border-radius:8px;color:#bfeaf7;border:1px solid rgba(255,255,255,0.03)}
+  .muted{opacity:0.7}
+  #controls{display:flex;gap:8px;flex-wrap:wrap}
+  footer{margin-top:10px;color:rgba(255,255,255,0.35);font-size:12px}
+  @media(max-width:900px){
+    .wrap{flex-direction:column}
+    .ui{width:100%;margin-left:0;margin-top:16px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="gameWrap" class="card">
+    <canvas id="c"></canvas>
+  </div>
+
+  <div class="ui">
+    <div class="card">
+      <h1>Sokoban — Sci-Fi (NES style)</h1>
+      <p class="small">Use as setas ← ↑ → ↓ — toque nos botões se estiver no celular</p>
+
+      <div style="height:12px"></div>
+
+      <div class="row" id="controls">
+        <button onclick="restart()">🔄 Reiniciar</button>
+        <button class="smallBtn" onclick="prevLevel()">◀</button>
+        <button class="smallBtn" onclick="nextLevel()">▶</button>
+        <button onclick="toggleMusic()">🎵 Música</button>
+        <button onclick="toggleMute()">🔇 Som</button>
+      </div>
+
+      <div style="height:8px"></div>
+      <div class="row"><strong id="txtLevel">Nível 1 / 10</strong></div>
+      <p id="msg" class="small muted"></p>
+
+      <footer>Pixel art gerada por código • Tema: Sci-Fi • Personagem: Robô</footer>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------------------------
+   Configuração e elementos
+   --------------------------- */
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', {alpha:false});
+const txtLevel = document.getElementById('txtLevel');
+const msgEl = document.getElementById('msg');
+
+let music = new Audio("https://files.catbox.moe/7n7x1s.mp3"); // música sci-fi (public)
+music.loop = true;
+music.volume = 0.45;
+music.muted = false;
+music.play().catch(()=>{}); // plays when allowed
+
+const sMove = new Audio("https://actions.google.com/sounds/v1/cartoon/pop.ogg");
+const sPush = new Audio("https://actions.google.com/sounds/v1/cartoon/wood_plank_flick.ogg");
+const sWin  = new Audio("https://actions.google.com/sounds/v1/cartoon/concussive_drum_hit.ogg");
+let mute = false;
+
+/* ---------------------------
+   NÍVEIS (10 fases progressivas)
+   Símbolos:
+   # = wall, P = player, B = box, G = goal, . = floor
+   --------------------------- */
+const LEVELS = [
+[
+"#########",
+"#.......#",
+"#..G....#",
+"#..BB...#",
+"#..P....#",
+"#.......#",
+"#########"
+],
+[
+"#########",
+"#...G...#",
+"#..BB...#",
+"#..B....#",
+"#..P....#",
+"#.......#",
+"#########"
+],
+[
+"###########",
+"#.........#",
+"#..GGG....#",
+"#..BBBB...#",
+"#...P.....#",
+"#.........#",
+"###########"
+],
+[
+"###########",
+"#...G.....#",
+"#..BBB....#",
+"#..B..G...#",
+"#...P.....#",
+"#.........#",
+"###########"
+],
+[
+"#############",
+"#.....G.....#",
+"#..BBBBB....#",
+"#...........#",
+"#....P......#",
+"#...........#",
+"#############"
+],
+[
+"#############",
+"#.G...G..G..#",
+"#.BBBBBB....#",
+"#...........#",
+"#....P......#",
+"#...........#",
+"#############"
+],
+[
+"###############",
+"#...G...G.....#",
+"#..BBBBBB.....#",
+"#..B..........#",
+"#....P........#",
+"#.............#",
+"###############"
+],
+[
+"###############",
+"#.GG...GG.....#",
+"#.BBBBBBBBB...#",
+"#..B..........#",
+"#....P........#",
+"#.............#",
+"###############"
+],
+[
+"#################",
+"#..G.....G......#",
+"#.BBBBBBBBB.....#",
+"#..B.......G....#",
+"#.....P.........#",
+"#...............#",
+"#################"
+],
+[
+"#################",
+"#.GGG...GGG.....#",
+"#.BBBBBBBBBB....#",
+"#..B.......G....#",
+"#.....P.........#",
+"#...............#",
+"#################"
+] ];
+
+/* ---------------------------
+   Estado do jogo
+   --------------------------- */
+let levelIndex = 0;
+let map = [];
+let goals = new Set();
+let tileSize = 48; // será recalculado
+let offsetX = 0, offsetY = 0;
+
+/* ---------------------------
+   Inicializa e carrega nível
+   --------------------------- */
+function loadLevel(index){
+  const raw = LEVELS[index];
+  map = raw.map(r => r.split(''));
+  goals = new Set();
+  for(let y=0;y<raw.length;y++){
+    for(let x=0;x<raw[y].length;x++){
+      if(raw[y][x] === 'G') goals.add(`${x},${y}`);
+    }
+  }
+  fitCanvasToLevel();
+  txtLevel.innerText = `Nível ${index+1} / ${LEVELS.length}`;
+  msgEl.innerText = '';
+  draw();
+}
+
+function fitCanvasToLevel(){
+  const rows = map.length;
+  const cols = map[0].length;
+
+  // máximo de área para o board (em px)
+  const maxBoard = Math.min(window.innerWidth * 0.48, 640); // stay large but not overflow
+  const maxHeight = Math.min(window.innerHeight * 0.76, 800);
+
+  // calcular tile size para caber
+  tileSize = Math.floor(Math.min(Math.max(16, Math.min(maxBoard/cols, maxHeight/rows)), 80));
+  canvas.width = cols * tileSize;
+  canvas.height = rows * tileSize;
+
+  // centralizar via margem do contêiner
+  document.getElementById('gameWrap').style.width = (canvas.width + 32) + 'px';
+
+  offsetX = 0; offsetY = 0;
+}
+
+/* ---------------------------
+   Desenho - Pixel art por código
+   --------------------------- */
+function draw(){
+  // fundo
+  ctx.fillStyle = "#02151f";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  const rows = map.length, cols = map[0].length;
+
+  // grade sutil
+  for(let y=0;y<rows;y++){
+    for(let x=0;x<cols;x++){
+      const px = x*tileSize, py = y*tileSize;
+      // floor
+      drawFloor(px,py);
+      // goal (por baixo)
+      if(goals.has(`${x},${y}`)) drawGoal(px,py);
+      // tile content
+      const t = map[y][x];
+      if(t === '#') drawWall(px,py);
+      else if(t === 'B') drawBox(px,py);
+      else if(t === 'P') drawPlayer(px,py);
+      // desenha linha de grade fina
+      ctx.strokeStyle = "rgba(0,0,0,0.18)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px+0.5,py+0.5,tileSize-1,tileSize-1);
+    }
+  }
+}
+
+function drawFloor(x,y){
+  // floor com padrão sci-fi: pequenos retângulos
+  ctx.fillStyle = "#0b2430";
+  ctx.fillRect(x,y,tileSize,tileSize);
+  ctx.fillStyle = "rgba(255,255,255,0.02)";
+  const step = Math.max(2, Math.floor(tileSize/6));
+  for(let i=0;i<tileSize;i+=step*2){
+    ctx.fillRect(x+i, y+Math.floor(step/2), step, Math.floor(step/3));
+  }
+}
+
+function drawWall(x,y){
+  // parede com borda
+  ctx.fillStyle = "#071826";
+  ctx.fillRect(x,y,tileSize,tileSize);
+  // borda brilhante
+  ctx.fillStyle = "#0e6b87";
+  ctx.fillRect(x+2,y+2,tileSize-4,Math.max(3, Math.floor(tileSize*0.06)));
+  // detalhes verticais
+  ctx.fillStyle = "rgba(0,0,0,0.2)";
+  const w = Math.max(2,Math.floor(tileSize/10));
+  for(let i=4;i<tileSize-4;i+=Math.floor(tileSize/6)) ctx.fillRect(x+i,y+8,w,tileSize-16);
+}
+
+function drawGoal(x,y){
+  // alvo circular (pixel-ish) - sci-fi orange ring
+  const cx = x + tileSize/2, cy = y + tileSize/2, r = tileSize*0.18;
+  ctx.beginPath();
+  ctx.fillStyle = "#ff9f1c";
+  ctx.arc(cx,cy,r+2,0,Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = "#071826";
+  ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = "#ff9f1c";
+  ctx.arc(cx,cy,r*0.45,0,Math.PI*2);
+  ctx.fill();
+}
+
+function drawBox(x,y){
+  // caixa laranja / metal
+  const pad = Math.max(4, Math.floor(tileSize*0.12));
+  ctx.fillStyle = "#c84a1b";
+  ctx.fillRect(x+pad,y+pad,tileSize-pad*2,tileSize-pad*2);
+  // sombras e detalhes
+  ctx.fillStyle = "#a63a12";
+  ctx.fillRect(x+pad,y+tileSize/2,tileSize-pad*2,Math.max(3,Math.floor(tileSize*0.08)));
+  ctx.strokeStyle = "#812f0e";
+  ctx.lineWidth = Math.max(2, Math.floor(tileSize/18));
+  ctx.beginPath();
+  ctx.moveTo(x+pad,y+pad);
+  ctx.lineTo(x+tileSize-pad,y+tileSize-pad);
+  ctx.moveTo(x+tileSize-pad,y+pad);
+  ctx.lineTo(x+pad,y+tileSize-pad);
+  ctx.stroke();
+  // sombreado
+  ctx.fillStyle = "rgba(0,0,0,0.12)";
+  ctx.fillRect(x+tileSize-pad-4,y+pad+4,4,tileSize-pad*2-8);
+}
+
+function drawPlayer(x,y){
+  // robô azul simples (pixel art feel)
+  const s = tileSize;
+  const cx = x + s/2, cy = y + s/2;
+  // corpo
+  ctx.fillStyle = "#36d1ff";
+  ctx.fillRect(x + s*0.25, y + s*0.18, s*0.5, s*0.64);
+  // head
+  ctx.fillStyle = "#0fc2ff";
+  ctx.fillRect(x + s*0.32, y + s*0.04, s*0.36, s*0.2);
+  // visor
+  ctx.fillStyle = "#021e2b";
+  ctx.fillRect(x + s*0.38, y + s*0.08, s*0.24, s*0.08);
+  // shadow
+  ctx.fillStyle = "rgba(0,0,0,0.14)";
+  ctx.fillRect(x + s*0.3, y + s*0.78, s*0.4, s*0.08);
+}
+
+/* ---------------------------
+   Utilitários e lógica
+   --------------------------- */
+function findPlayer(){
+  for(let y=0;y<map.length;y++)
+    for(let x=0;x<map[0].length;x++)
+      if(map[y][x] === 'P') return {x,y};
+  return null;
+}
+
+function isWall(x,y){
+  return map[y] && map[y][x] === '#';
+}
+function isBox(x,y){
+  return map[y] && map[y][x] === 'B';
+}
+
+function setCell(x,y,v){
+  map[y][x] = v;
+}
+
+function move(dx,dy){
+  const p = findPlayer();
+  if(!p) return;
+  const nx = p.x + dx, ny = p.y + dy;
+  if(isWall(nx,ny)) return;
+  const target = map[ny][nx];
+  if(target === 'B'){
+    const bx = nx + dx, by = ny + dy;
+    // checar se pode empurrar
+    if(isWall(bx,by) || isBox(bx,by)) return;
+    // empurra caixa
+    setCell(bx,by,'B');
+    setCell(nx,ny,'P');
+    // limpa antiga pos do player
+    setCell(p.x,p.y, goals.has(`${p.x},${p.y}`) ? 'G' : '.');
+    if(!mute) sPush.currentTime = 0, sPush.play();
+  } else if(target === '.' || target === 'G'){
+    setCell(nx,ny,'P');
+    setCell(p.x,p.y, goals.has(`${p.x},${p.y}`) ? 'G' : '.');
+    if(!mute) sMove.currentTime = 0, sMove.play();
+  }
+  draw();
+  checkWin();
+}
+
+function checkWin(){
+  // todos os goals ocupados por caixas?
+  for(const pos of goals){
+    const [x,y] = pos.split(',').map(Number);
+    if(map[y][x] !== 'B') return false;
+  }
+  // venceu
+  if(!mute) sWin.currentTime = 0, sWin.play();
+  msgEl.innerText = "🎉 Vitória!";
+  setTimeout(()=> {
+    nextLevel();
+  }, 700);
+  return true;
+}
+
+/* ---------------------------
+   Controles do teclado e botões
+   --------------------------- */
+document.addEventListener('keydown', e=>{
+  if(e.key === 'ArrowUp') move(0,-1);
+  if(e.key === 'ArrowDown') move(0,1);
+  if(e.key === 'ArrowLeft') move(-1,0);
+  if(e.key === 'ArrowRight') move(1,0);
+  if(e.key === 'r' || e.key === 'R') restart();
+});
+
+function restart(){ loadLevel(levelIndex); }
+function prevLevel(){ if(levelIndex>0){ levelIndex--; loadLevel(levelIndex); } }
+function nextLevel(){ if(levelIndex < LEVELS.length-1){ levelIndex++; loadLevel(levelIndex); } else { msgEl.innerText = "Você completou todos os níveis!"; } }
+
+function toggleMusic(){
+  if(music.paused) music.play();
+  else music.pause();
+}
+function toggleMute(){
+  mute = !mute;
+  sMove.muted = sPush.muted = sWin.muted = mute;
+}
+
+/* ---------------------------
+   Ajusta canvas ao redimensionar
+   --------------------------- */
+window.addEventListener('resize', ()=>{
+  fitCanvasToLevel();
+  draw();
+});
+
+/* ---------------------------
+   Inicialização
+   --------------------------- */
+loadLevel(levelIndex);
+</script>
+</body>
+</html>
